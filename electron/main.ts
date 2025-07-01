@@ -68,22 +68,29 @@ function createWindow() {
       sandbox: true,
       webSecurity: true,
     },
-  });
-
-  ipcMain.on('resize-window', (event, which) => {
+  }); ipcMain.on('resize-window', (_event, which) => {
     if (!win) {
       return;
     }
     switch (which) {
-      case 0:
+      case 0: // Default size
         win.setSize(1300, 800);
+        win.center();
         break;
 
-      case 1:
-        win.setSize(500, 80);
+      case 1: // Compact widget (like mini Spotify player)
+        win.setSize(400, 120);
         break;
 
-      case 2: {
+      case 2: // Mini widget (smallest size)
+        win.setSize(320, 80);
+        break;
+
+      case 3: // Medium widget
+        win.setSize(600, 200);
+        break;
+
+      case 4: { // Fullscreen
         const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
         win.setSize(sw, sh);
         win.setPosition(0, 0);
@@ -278,7 +285,7 @@ ipcMain.handle('refresh-token', async (_event, refreshToken: string) => {
   }
 });
 
-ipcMain.handle('exchange-code', async (event, code: string) => {
+ipcMain.handle('exchange-code', async (_event, code: string) => {
   if (!code) {
     throw new Error('No code provided');
   }

@@ -38,7 +38,6 @@ export function createSession(config: SessionConfig): TimerSession {
     const intervals: TimerInterval[] = [];
 
     for (let i = 1; i <= config.totalSessions; i++) {
-        // Add a focus interval
         intervals.push({ type: 'focus', start: config.focusDuration * 60 });
 
         // Add a break interval (short or long)

@@ -8,17 +8,6 @@ import 'react-circular-progressbar/dist/styles.css';
 import ResizeWindowButton from '../components/resizeWindowButton';
 import { useSpotify } from '../context/SpotifyContext';
 
-interface Track {
-    id: string,
-    name: string,
-    uri: string,
-    artists: Array<{ name: string }>
-    album: {
-        images: Array<{ url: string }>;
-        uri: string
-    };
-}
-
 interface CurrentlyPlaying {
     device: {
         volume_percent: number
@@ -34,7 +23,6 @@ interface CurrentlyPlaying {
     };
     is_playing: boolean
     progress_ms: number
-
 }
 
 export default function Timer() {
@@ -42,7 +30,7 @@ export default function Timer() {
     const location = useLocation();
     const { isAuthenticated, login, tokens } = useSpotify();
     const [currentlyPlaying, setCurrentlyPlaying] = useState<CurrentlyPlaying | null>(null);
-    const [searchResults, setSearchResults] = useState<Track[]>([]);
+    const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
 
     const [state, dispatch] = useReducer(
         pomodoroReducer,
@@ -56,6 +44,25 @@ export default function Timer() {
     const { session, timeLeft, isRunning } = state;
     const current = session?.intervals[session?.currentIndex];
     const audioRef = useRef(new Audio(Alarm));
+
+    // Track window size for responsive design
+    useEffect(() => {
+        const handleResize = () => {
+            setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+        };
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    // Determine layout mode based on window size
+    const isMiniWidget = windowSize.width <= 320 && windowSize.height <= 80;
+    const isCompactWidget = windowSize.width <= 400 && windowSize.height <= 120;
+    const isMediumWidget = windowSize.width <= 600 && windowSize.height <= 200;
+    const isFullSize = windowSize.width > 600;
+
+    // Determine if we should show timer-only layout (no Spotify integration in full size)
+    const shouldShowTimerOnly = isFullSize && !currentlyPlaying;
 
     // Handle navigation when session is invalid
     useEffect(() => {
@@ -126,59 +133,7 @@ export default function Timer() {
         }
     }, [timeLeft, isRunning, isAuthenticated, current?.type, tokens?.accessToken]);
 
-    const searchSong = async (userSearch: string) => {
-        if (!tokens?.accessToken) {
-            console.error('Access token is missing');
-            return;
-        }
-
-        try {
-            const query = encodeURIComponent(userSearch);
-            const response = await fetch(`https://api.spotify.com/v1/search?q=${query}&type=track&limit=5`, {
-                headers: { 'Authorization': `Bearer ${tokens.accessToken}` },
-            });
-
-            if (!response.ok) {
-                console.error('Failed to fetch tracks:', await response.json());
-                return;
-            }
-
-            const { tracks } = await response.json();
-            setSearchResults(tracks.items); // Store tracks in state
-        } catch (error) {
-            console.error('Error searching for tracks:', error);
-        }
-    };
-
-    const playSongWithAutoplay = async (trackUri: string, contextUri: string) => {
-        if (!tokens?.accessToken) {
-            console.error('Access token is missing');
-            return;
-        }
-
-        try {
-            const response = await fetch('https://api.spotify.com/v1/me/player/play', {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `Bearer ${tokens.accessToken}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    context_uri: contextUri,
-                    offset: { uri: trackUri },
-                }),
-            });
-
-            if (!response.ok) {
-                console.error('Failed to play song with autoplay:', await response.json());
-            } else {
-                console.log('Song is now playing with autoplay enabled');
-            }
-        } catch (error) {
-            console.error('Error playing song with autoplay:', error);
-        }
-    };
-
+    // Update progress in real time
     useEffect(() => {
         const interval = setInterval(() => {
             setCurrentlyPlaying((prev) => {
@@ -251,169 +206,487 @@ export default function Timer() {
         }
     };
 
-    return (
-        <div className="md:min-h-screen h-[57px] flex md:flex-col  items-center py-0.5  overflow-y-hidden">
-            <button className="absolute top-0 left-0 text-xs" onClick={() => navigate('/')}>
-                {`<`}
-            </button>
-            <ResizeWindowButton />
-            {isAuthenticated && currentlyPlaying && (
-                <div className="md:ml-0 ml-6   md:mt-4 mt-0 xl:px-64 md:px-32 p-1 flex items-center md:gap-4 gap-2 md:w-full w-[55%]">
-
-                    <img
-                        src={currentlyPlaying.item.album.images[0]?.url}
-                        alt="Album cover"
-                        className="md:w-24 md:h-24 w-11 h-11 rounded"
-                    />
-                    <div className="flex-1  break-words whitespace-normal ">
-                        <h3 className="md:text-2xl text-[10px] font-semibold break-words">{currentlyPlaying.item.name}</h3>
-                        <p className="md:text-lg text-[8px] break-words">{currentlyPlaying.item.artists.map(artist => artist.name).join(', ')}</p>
-                    </div>
-                    <div className="relative md:block hidden">
-                        <input
-
-                            type="text"
-                            placeholder="Search for a song"
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    searchSong(e.currentTarget.value);
-                                }
-                            }}
-                            className="border px-4 py-2 rounded-lg"
-                        />
-                        {/* Display Search Results */}
-                        {searchResults.length > 0 && (
-                            <div className="absolute top-12 right-0 bg-white shadow-md rounded p-4 w-64 z-50">
-                                <button
-                                    onClick={() => setSearchResults([])} // Clear search results
-                                    className="text-red-500 hover:text-red-700"
-                                >
-                                    Close
-                                </button>
-                                <h3 className="font-semibold mb-2">Search Results:</h3>
-                                <ul>
-                                    {searchResults.map((track) => (
-                                        <li key={track.id} className="mb-2">
-                                            <div
-                                                onClick={() => playSongWithAutoplay(track.uri, track.album.uri)}
-                                                className="flex items-center gap-2
-                                                hover:bg-gray-200 cursor-pointer">
-                                                <img
-                                                    src={track.album.images[0]?.url}
-                                                    alt={track.name}
-                                                    className="w-10 h-10 rounded"
-                                                />
-                                                <div>
-                                                    <p className="text-sm font-medium">{track.name}</p>
-                                                    <p className="text-xs text-gray-500">
-                                                        {track.artists.map((artist) => artist.name).join(', ')}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => handlePlaybackControl('previous')}
-                            className="text-gray-600 hover:text-gray-900"
-                        >
-                            <SkipBack className="md:w-12 md:h-12" />
-                        </button>
-                        <button
-                            onClick={() => handlePlaybackControl(currentlyPlaying.is_playing ? 'pause' : 'play')}
-                            className="text-gray-600 hover:text-gray-900"
-                        >
-                            {currentlyPlaying.is_playing ? <Pause className="md:w-12 md:h-12" /> : <Play className="md:w-12 md:h-12" />}
-                        </button>
-                        <button
-                            onClick={() => handlePlaybackControl('next')}
-                            className="text-gray-600 hover:text-gray-900"
-                        >
-                            <SkipForward className="md:w-12 md:h-12" />
-                        </button>
-                    </div>
-
+    // Mini Widget Layout (320x80)
+    if (isMiniWidget) {
+        return (
+            <div className="w-full h-full bg-black/80 backdrop-blur-sm flex items-center justify-between px-3 py-2">
+                <div className="hidden">
+                    <ResizeWindowButton />
                 </div>
-            )}
-            <div className="md:block hidden h-40 my-2 w-full">
-                {/* Progress Bar */}
-                <div className="flex flex-col items-center w-full mt-2 px-64">
-                    <div className="w-full bg-gray-300 rounded-full h-2.5">
-                        <div
-                            className="bg-focus-c h-2.5 rounded-full transition-all duration-300"
-                            style={{
-                                width: `${currentlyPlaying ? ((currentlyPlaying.progress_ms ?? 0) / currentlyPlaying.item.duration_ms) * 100 : 0
-                                    }%`,
-                            }}
-                        ></div>
+
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                    {/* Timer Display */}
+                    <div className="text-white text-sm font-mono">
+                        {formatTime(timeLeft)}
                     </div>
-                    <div className="flex justify-between w-full text-xs mt-1 text-gray-600">
-                        <span>{currentlyPlaying ? songFormatTime(currentlyPlaying.progress_ms) : '0:00'}</span>
-                        <span>{currentlyPlaying ? songFormatTime(currentlyPlaying.item.duration_ms) : '0:00'}</span>
-                    </div>
+                    {/* Status Indicator */}
+                    <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
+                    {/* Spotify Track (if available) */}
+                    {currentlyPlaying && (
+                        <div className="text-white text-xs truncate">
+                            {currentlyPlaying.item.name}
+                        </div>
+                    )}
+                </div>
+                {/* Quick Controls */}
+                <div className="flex gap-1">
+                    <button
+                        onClick={() => dispatch({ type: isRunning ? 'STOP' : 'START' })}
+                        className="text-white hover:text-gray-300 p-1"
+                    >
+                        {isRunning ? <Pause size={12} /> : <Play size={12} />}
+                    </button>
                 </div>
             </div>
-            <div className="flex md:flex-col  items-center  md:mx-0 md:w-full w-1/2 px-4 border-l-2 ">
-                <div className="relative md:w-[500px] md:h-[500px] w-[52px] h-[52px] order-2 md:ml-0 ml-auto">
-                    <div className="md:w-[500px] md:h-[500px] border-t-2 rounded-t-full absolute -translate-x-8 -top-8 -rotate-45"> </div>
-                    <div className="absolute md:top-24 md:left-1/2 -left-2/3 -translate-x-2/3  flex flex-col items-center">
-                        <h1 className="md:text-2xl text-xs font-extralight">
-                            {current.type === 'focus' ? 'Focus' :
-                                current.type === 'shortBreak' ? 'Short Break' :
-                                    'Long Break'}
-                        </h1>
-                        <div className="flex gap-4">
+        );
+    }
+
+    // Compact Widget Layout (400x120)
+    if (isCompactWidget) {
+        return (
+            <div className="w-full h-full bg-white rounded-lg shadow-lg flex items-center gap-4 p-4">
+                <div className="hidden">
+                    <ResizeWindowButton />
+                </div>
+
+                {/* Timer Section */}
+                <div className="flex items-center gap-3">
+                    <div className="relative w-16 h-16">
+                        <CircularProgressbar
+                            styles={{
+                                path: {
+                                    stroke: current.type === 'focus' ? '#3B82F6' : '#F63B3E',
+                                    strokeWidth: 8
+                                },
+                                trail: { stroke: '#E5E7EB' }
+                            }}
+                            value={current.start - timeLeft}
+                            maxValue={current.start}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-xs font-bold text-gray-900">
+                                {formatTime(timeLeft)}
+                            </span>
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-sm font-medium text-gray-900">
+                            {current.type === 'focus' ? 'Focus' : 'Break'}
+                        </div>
+                        <button
+                            onClick={() => dispatch({ type: isRunning ? 'STOP' : 'START' })}
+                            className={`text-xs px-2 py-1 rounded-full ${isRunning
+                                ? 'bg-red-100 text-red-600'
+                                : 'bg-blue-100 text-blue-600'}`}
+                        >
+                            {isRunning ? 'Pause' : 'Start'}
+                        </button>
+                    </div>
+                </div>
+
+                {/* Spotify Section (if authenticated and playing) */}
+                {currentlyPlaying && (
+                    <>
+                        <div className="w-px h-16 bg-gray-200" />
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <img
+                                src={currentlyPlaying.item.album.images[0]?.url}
+                                alt="Album"
+                                className="w-12 h-12 rounded object-cover"
+                            />
+                            <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-gray-900 truncate">
+                                    {currentlyPlaying.item.name}
+                                </div>
+                                <div className="text-xs text-gray-600 truncate">
+                                    {currentlyPlaying.item.artists[0]?.name}
+                                </div>
+                            </div>
+                            <div className="flex gap-1">
+                                <button
+                                    onClick={() => handlePlaybackControl(currentlyPlaying.is_playing ? 'pause' : 'play')}
+                                    className="p-1 text-gray-600 hover:text-gray-900"
+                                >
+                                    {currentlyPlaying.is_playing ? <Pause size={14} /> : <Play size={14} />}
+                                </button>
+                            </div>
+                        </div>
+                    </>
+                )}
+            </div>
+        );
+    }
+
+    // Medium Widget Layout (600x200)
+    if (isMediumWidget) {
+        return (
+            <div className="w-full h-full bg-white rounded-xl shadow-lg overflow-hidden">
+                <div className="sm:hidden">
+                    <ResizeWindowButton />
+                </div>
+                <div className="p-6">
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                            {current.type === 'focus' ? 'Focus Session' : 'Break Time'}
+                        </h2>
+                        <div className="flex gap-1">
                             {Array.from({ length: session.config.totalSessions }).map((_, index) => (
                                 <div
                                     key={index}
-                                    className={`w-1 md:h-10 h-4 rounded-full ${index < session.sessionCount ? current.type === 'focus'
-                                        ? 'bg-focus-c' : 'bg-break-c' : 'bg-gray-300'}`}>
-                                </div>
+                                    className={`w-2 h-4 rounded-full ${index < session.sessionCount
+                                        ? (current.type === 'focus' ? 'bg-blue-500' : 'bg-red-500')
+                                        : 'bg-gray-300'
+                                        }`}
+                                />
                             ))}
                         </div>
                     </div>
-                    <CircularProgressbar
-                        styles={{
-                            path: { stroke: current.type !== 'focus' ? '#F63B3E' : '#3B82F6' },
-                        }}
-                        value={current.start - timeLeft} maxValue={current.start} strokeWidth={5} />
-                    <h1 className="md:text-5xl text-xs font-bold absolute md:top-2/3 top-1/2 left-1/2  -translate-x-1/2 -translate-y-1/2 z-20">
-                        {formatTime(timeLeft)}
-                    </h1>
-                    <div className="md:w-[500px] md:h-[500px] border-b-2 rounded-b-full absolute translate-x-8 -bottom-8 -rotate-45"> </div>
-                </div>
-                <div className="flex md:space-x-24 space-x-2 md:order-2 order:1 md:my-12">
-                    <button
-                        className={`text-focus-c ${isRunning ? 'cursor-not-allowed opacity-80' : ''}`}
-                        onClick={() => dispatch({ type: 'START' })}
-                        disabled={isRunning}
-                    >
-                        <Play className="md:w-14 md:h-14" />
-                    </button>
-                    <button
-                        className={`rounded text-focus-c  ${isRunning ? '' : 'cursor-not-allowed opacity-80'}`}
-                        onClick={() => dispatch({ type: 'STOP' })}
-                        disabled={!isRunning}
-                    >
-                        <Pause className="md:w-12 md:h-12" />
-                    </button>
-                </div>
-            </div>
-            <div className="absolute top-0 left-[30%] p-2">
-                {!isAuthenticated && (
-                    <button
-                        onClick={handleSpotifyConnect}
-                        className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
-                    >
-                        Connect Spotify
-                    </button>
-                )}
-            </div>
 
+                    <div className="flex items-center gap-6">
+                        {/* Timer */}
+                        <div className="flex items-center gap-4">
+                            <div className="relative w-20 h-20">
+                                <CircularProgressbar
+                                    styles={{
+                                        path: {
+                                            stroke: current.type === 'focus' ? '#3B82F6' : '#F63B3E',
+                                            strokeWidth: 6
+                                        },
+                                        trail: { stroke: '#E5E7EB' }
+                                    }}
+                                    value={current.start - timeLeft}
+                                    maxValue={current.start}
+                                />
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <span className="text-lg font-bold text-gray-900">
+                                        {formatTime(timeLeft)}
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => dispatch({ type: 'START' })}
+                                    disabled={isRunning}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${isRunning
+                                        ? 'bg-gray-200 text-gray-400'
+                                        : 'bg-blue-500 text-white hover:bg-blue-600'
+                                        }`}
+                                >
+                                    Start
+                                </button>
+                                <button
+                                    onClick={() => dispatch({ type: 'STOP' })}
+                                    disabled={!isRunning}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${!isRunning
+                                        ? 'bg-gray-200 text-gray-400'
+                                        : 'bg-red-500 text-white hover:bg-red-600'
+                                        }`}
+                                >
+                                    Pause
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Spotify Section */}
+                        {currentlyPlaying ? (
+                            <div className="flex items-center gap-4 flex-1 min-w-0">
+                                <img
+                                    src={currentlyPlaying.item.album.images[0]?.url}
+                                    alt="Album"
+                                    className="w-16 h-16 rounded-lg object-cover"
+                                />
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-base font-medium text-gray-900 truncate">
+                                        {currentlyPlaying.item.name}
+                                    </div>
+                                    <div className="text-sm text-gray-600 truncate">
+                                        {currentlyPlaying.item.artists.map(a => a.name).join(', ')}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-2">
+                                        <button
+                                            onClick={() => handlePlaybackControl('previous')}
+                                            className="p-1 text-gray-600 hover:text-gray-900"
+                                        >
+                                            <SkipBack size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => handlePlaybackControl(currentlyPlaying.is_playing ? 'pause' : 'play')}
+                                            className="p-2 bg-green-500 text-white rounded-full hover:bg-green-600"
+                                        >
+                                            {currentlyPlaying.is_playing ? <Pause size={16} /> : <Play size={16} />}
+                                        </button>
+                                        <button
+                                            onClick={() => handlePlaybackControl('next')}
+                                            className="p-1 text-gray-600 hover:text-gray-900"
+                                        >
+                                            <SkipForward size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : !isAuthenticated && (
+                            <div className="flex-1">
+                                <button
+                                    onClick={handleSpotifyConnect}
+                                    className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 text-sm"
+                                >
+                                    Connect Spotify
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // Full Size Layout (default)
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 p-4">
+            {/* Navigation */}
+            <button
+                className="absolute top-4 left-4 text-gray-600 hover:text-gray-800 transition-colors"
+                onClick={() => navigate('/')}
+            >
+                ← Back
+            </button>
+
+            <ResizeWindowButton />
+
+            {/* Main Container */}
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden w-full max-w-4xl">
+                {/* Header */}
+                <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-6">
+                    <h1 className="text-2xl font-bold mb-2">
+                        {current.type === 'focus' ? 'Focus Time' :
+                            current.type === 'shortBreak' ? 'Short Break' : 'Long Break'}
+                    </h1>
+                    <div className="flex gap-2">
+                        {Array.from({ length: session.config.totalSessions }).map((_, index) => (
+                            <div
+                                key={index}
+                                className={`w-3 h-6 rounded-full ${index < session.sessionCount
+                                    ? 'bg-white' : 'bg-white/30'
+                                    }`}
+                            />
+                        ))}
+                    </div>
+                </div>
+
+                <div className="p-8">
+                    {/* Spotify Section */}
+                    {currentlyPlaying && (
+                        <div className="flex items-center gap-6 p-6">
+                            {/* Spotify Section */}
+                            <div className="flex items-center gap-4 flex-1 min-w-0">
+                                <img
+                                    src={currentlyPlaying.item.album.images[0]?.url}
+                                    alt="Album cover"
+                                    className="w-16 h-16 rounded-lg shadow-md flex-shrink-0"
+                                />
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="text-lg font-semibold text-gray-900 truncate">
+                                        {currentlyPlaying.item.name}
+                                    </h3>
+                                    <p className="text-sm text-gray-600 truncate">
+                                        {currentlyPlaying.item.artists.map(artist => artist.name).join(', ')}
+                                    </p>
+                                    {/* Progress Bar */}
+                                    <div className="mt-2">
+                                        <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                            <div
+                                                className="bg-green-500 h-1.5 rounded-full transition-all duration-300"
+                                                style={{
+                                                    width: `${((currentlyPlaying.progress_ms ?? 0) / currentlyPlaying.item.duration_ms) * 100}%`,
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                            <span>{songFormatTime(currentlyPlaying.progress_ms)}</span>
+                                            <span>{songFormatTime(currentlyPlaying.item.duration_ms)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                {/* Spotify Controls */}
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                    <button
+                                        onClick={() => handlePlaybackControl('previous')}
+                                        className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors"
+                                    >
+                                        <SkipBack size={20} />
+                                    </button>
+                                    <button
+                                        onClick={() => handlePlaybackControl(currentlyPlaying.is_playing ? 'pause' : 'play')}
+                                        className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors"
+                                    >
+                                        {currentlyPlaying.is_playing ? <Pause size={20} /> : <Play size={20} />}
+                                    </button>
+                                    <button
+                                        onClick={() => handlePlaybackControl('next')}
+                                        className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors"
+                                    >
+                                        <SkipForward size={20} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Vertical Divider */}
+                            <div className="w-px h-20 bg-gray-200" />
+
+                            {/* Compact Timer Section */}
+                            <div className="flex flex-col items-center gap-4 flex-shrink-0">
+                                <div className="relative w-24 h-24">
+                                    <CircularProgressbar
+                                        styles={{
+                                            path: {
+                                                stroke: current.type === 'focus' ? '#3B82F6' : '#F63B3E',
+                                                strokeWidth: 8
+                                            },
+                                            trail: { stroke: '#E5E7EB' }
+                                        }}
+                                        value={current.start - timeLeft}
+                                        maxValue={current.start}
+                                    />
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                        <span className="text-xs font-medium text-gray-600">
+                                            {current.type === 'focus' ? 'Focus' :
+                                                current.type === 'shortBreak' ? 'Break' : 'Long Break'}
+                                        </span>
+                                        <span className="text-lg font-bold text-gray-900">
+                                            {formatTime(timeLeft)}
+                                        </span>
+                                    </div>
+                                </div>
+                                {/* Timer Controls */}
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => dispatch({ type: 'START' })}
+                                        disabled={isRunning}
+                                        className={`p-2 rounded-full transition-colors ${isRunning
+                                            ? 'text-gray-400 cursor-not-allowed'
+                                            : 'text-blue-600 hover:bg-blue-50'
+                                            }`}
+                                    >
+                                        <Play size={16} />
+                                    </button>
+                                    <button
+                                        onClick={() => dispatch({ type: 'STOP' })}
+                                        disabled={!isRunning}
+                                        className={`p-2 rounded-full transition-colors ${!isRunning
+                                            ? 'text-gray-400 cursor-not-allowed'
+                                            : 'text-red-600 hover:bg-red-50'
+                                            }`}
+                                    >
+                                        <Pause size={16} />
+                                    </button>
+                                </div>
+                                {/* Session Progress */}
+                                <div className="flex gap-1">
+                                    {Array.from({ length: session.config.totalSessions }).map((_, index) => (
+                                        <div
+                                            key={index}
+                                            className={`w-2 h-6 rounded-full ${index < session.sessionCount
+                                                ? (current.type === 'focus' ? 'bg-blue-500' : 'bg-red-500')
+                                                : 'bg-gray-300'
+                                                }`}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Timer-Only Layout */}
+                    {shouldShowTimerOnly && (
+                        <div className="p-8 text-center">
+                            {/* Session Info */}
+                            <div className="mb-6">
+                                <h1 className="text-2xl font-light text-gray-800 mb-2">
+                                    {current.type === 'focus' ? 'Focus Time' :
+                                        current.type === 'shortBreak' ? 'Short Break' :
+                                            'Long Break'}
+                                </h1>
+                                <div className="flex justify-center gap-2 mb-4">
+                                    {Array.from({ length: session.config.totalSessions }).map((_, index) => (
+                                        <div
+                                            key={index}
+                                            className={`w-3 h-8 rounded-full ${index < session.sessionCount
+                                                ? (current.type === 'focus' ? 'bg-blue-500' : 'bg-red-500')
+                                                : 'bg-gray-300'
+                                                }`}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Large Timer */}
+                            <div className="relative w-64 h-64 mx-auto mb-8">
+                                <CircularProgressbar
+                                    styles={{
+                                        path: {
+                                            stroke: current.type === 'focus' ? '#3B82F6' : '#F63B3E',
+                                            strokeWidth: 4
+                                        },
+                                        trail: { stroke: '#E5E7EB' }
+                                    }}
+                                    value={current.start - timeLeft}
+                                    maxValue={current.start}
+                                />
+                                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                    <span className="text-4xl font-bold text-gray-900 mb-2">
+                                        {formatTime(timeLeft)}
+                                    </span>
+                                    <span className="text-sm text-gray-600">
+                                        {current.type === 'focus' ? 'Stay focused!' :
+                                            current.type === 'shortBreak' ? 'Take a break' : 'Long break time'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Timer Controls */}
+                            <div className="flex justify-center gap-4">
+                                <button
+                                    onClick={() => dispatch({ type: 'START' })}
+                                    disabled={isRunning}
+                                    className={`px-6 py-3 rounded-full font-medium transition-colors ${isRunning
+                                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                        : 'bg-blue-500 text-white hover:bg-blue-600'
+                                        }`}
+                                >
+                                    <Play className="w-5 h-5 inline mr-2" />
+                                    Start
+                                </button>
+                                <button
+                                    onClick={() => dispatch({ type: 'STOP' })}
+                                    disabled={!isRunning}
+                                    className={`px-6 py-3 rounded-full font-medium transition-colors ${!isRunning
+                                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                        : 'bg-red-500 text-white hover:bg-red-600'
+                                        }`}
+                                >
+                                    <Pause className="w-5 h-5 inline mr-2" />
+                                    Pause
+                                </button>
+                            </div>
+
+                            {/* Spotify Connect Button */}
+                            {!isAuthenticated && (
+                                <div className="mt-8 pt-6 border-t border-gray-200">
+                                    <button
+                                        onClick={handleSpotifyConnect}
+                                        className="bg-green-500 text-white px-6 py-3 rounded-full font-medium hover:bg-green-600 transition-colors"
+                                    >
+                                        🎵 Connect Spotify
+                                    </button>
+                                    <p className="text-xs text-gray-500 mt-2">
+                                        Connect to play music during breaks
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }

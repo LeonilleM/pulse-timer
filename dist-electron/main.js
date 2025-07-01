@@ -1,11 +1,14 @@
-import { app, BrowserWindow, ipcMain, screen } from "electron";
-import path$1 from "node:path";
-import { fileURLToPath } from "node:url";
-import crypto$1 from "node:crypto";
-import require$$0 from "fs";
-import require$$1 from "path";
-import require$$2 from "os";
-import require$$3 from "crypto";
+"use strict";
+Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+const electron = require("electron");
+const path$1 = require("node:path");
+const node_url = require("node:url");
+const crypto$1 = require("node:crypto");
+const require$$0 = require("fs");
+const require$$1 = require("path");
+const require$$2 = require("os");
+const require$$3 = require("crypto");
+var _documentCurrentScript = typeof document !== "undefined" ? document.currentScript : null;
 function getDefaultExportFromCjs(x) {
   return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
 }
@@ -284,10 +287,10 @@ if (!SPOTIFY_CLIENT_ID) {
   console.error("ERROR: Missing SPOTIFY_CLIENT_ID environment variable");
   console.error("Please create a .env file with your Spotify API credentials");
   console.error("See .env.example for the required format");
-  app.exit(1);
+  electron.app.exit(1);
 }
-const __dirname = path$1.dirname(fileURLToPath(import.meta.url));
-process.env.APP_ROOT = path$1.join(__dirname, "..");
+const __dirname$1 = path$1.dirname(node_url.fileURLToPath(typeof document === "undefined" ? require("url").pathToFileURL(__filename).href : _documentCurrentScript && _documentCurrentScript.tagName.toUpperCase() === "SCRIPT" && _documentCurrentScript.src || new URL("main.js", document.baseURI).href));
+process.env.APP_ROOT = path$1.join(__dirname$1, "..");
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 const MAIN_DIST = path$1.join(process.env.APP_ROOT, "dist-electron");
 const RENDERER_DIST = path$1.join(process.env.APP_ROOT, "dist");
@@ -307,32 +310,39 @@ function getPKCECodes() {
   return { code_verifier, code_challenge };
 }
 function createWindow() {
-  win = new BrowserWindow({
+  win = new electron.BrowserWindow({
     title: "pomodoroTimer",
     width: 1300,
     height: 800,
     alwaysOnTop: true,
     webPreferences: {
-      preload: path$1.join(__dirname, "preload.mjs"),
+      preload: path$1.join(__dirname$1, "preload.mjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true
     }
   });
-  ipcMain.on("resize-window", (event, which) => {
+  electron.ipcMain.on("resize-window", (_event, which) => {
     if (!win) {
       return;
     }
     switch (which) {
       case 0:
         win.setSize(1300, 800);
+        win.center();
         break;
       case 1:
-        win.setSize(500, 80);
+        win.setSize(400, 120);
         break;
-      case 2: {
-        const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+      case 2:
+        win.setSize(320, 80);
+        break;
+      case 3:
+        win.setSize(600, 200);
+        break;
+      case 4: {
+        const { width: sw, height: sh } = electron.screen.getPrimaryDisplay().workAreaSize;
         win.setSize(sw, sh);
         win.setPosition(0, 0);
         break;
@@ -350,19 +360,19 @@ function createWindow() {
     win.loadFile(path$1.join(RENDERER_DIST, "index.html"));
   }
 }
-app.on("window-all-closed", () => {
+electron.app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
-    app.quit();
+    electron.app.quit();
     win = null;
   }
 });
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+electron.app.on("activate", () => {
+  if (electron.BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
 });
-app.whenReady().then(createWindow);
-ipcMain.handle("spotify-login", async () => {
+electron.app.whenReady().then(createWindow);
+electron.ipcMain.handle("spotify-login", async () => {
   if (isLoginInProgress) {
     logToConsole("Login already in progress, ignoring request");
     return;
@@ -461,7 +471,7 @@ ipcMain.handle("spotify-login", async () => {
     });
   });
 });
-ipcMain.handle("refresh-token", async (_event, refreshToken) => {
+electron.ipcMain.handle("refresh-token", async (_event, refreshToken) => {
   logToConsole("Starting token refresh...");
   try {
     const response = await fetch("https://accounts.spotify.com/api/token", {
@@ -484,7 +494,7 @@ ipcMain.handle("refresh-token", async (_event, refreshToken) => {
     throw error;
   }
 });
-ipcMain.handle("exchange-code", async (event, code) => {
+electron.ipcMain.handle("exchange-code", async (_event, code) => {
   if (!code) {
     throw new Error("No code provided");
   }
@@ -527,8 +537,6 @@ ipcMain.handle("exchange-code", async (event, code) => {
     codeVerifier = null;
   }
 });
-export {
-  MAIN_DIST,
-  RENDERER_DIST,
-  VITE_DEV_SERVER_URL
-};
+exports.MAIN_DIST = MAIN_DIST;
+exports.RENDERER_DIST = RENDERER_DIST;
+exports.VITE_DEV_SERVER_URL = VITE_DEV_SERVER_URL;
